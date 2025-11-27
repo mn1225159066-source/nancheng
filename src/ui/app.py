@@ -715,6 +715,45 @@ def preferred_browser_order():
         return ["Firefox", "Chrome", "Edge"]
     return ["Edge", "Chrome", "Firefox"]
 
+def quick_cookie_default(domain):
+    try:
+        b = detect_default_browser()
+        local = os.environ.get('LOCALAPPDATA') or ''
+        if b == "Chrome":
+            base = os.path.join(local, 'Google', 'Chrome', 'User Data')
+            keyf = os.path.join(base, 'Local State')
+            p = os.path.join(base, 'Default', 'Network', 'Cookies')
+            if os.path.exists(p):
+                try:
+                    try:
+                        jar = browser_cookie3.chrome(domain_name=domain, cookie_file=p, key_file=keyf)
+                    except TypeError:
+                        jar = browser_cookie3.chrome(domain_name=domain, cookie_file=p)
+                    if len(jar) > 0:
+                        return format_cookie_str(jar), UA_CHROME
+                except Exception:
+                    pass
+        if b == "Edge":
+            base = os.path.join(local, 'Microsoft', 'Edge', 'User Data')
+            p = os.path.join(base, 'Default', 'Network', 'Cookies')
+            if os.path.exists(p):
+                try:
+                    jar = browser_cookie3.edge(domain_name=domain, cookie_file=p)
+                    if len(jar) > 0:
+                        return format_cookie_str(jar), UA_EDGE
+                except Exception:
+                    pass
+        if b == "Firefox":
+            try:
+                jar = browser_cookie3.firefox(domain_name=domain)
+                if len(jar) > 0:
+                    return format_cookie_str(jar), UA_FIREFOX
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return None
+
 def launch_debug_browser(open_site: bool = True):
     try:
         # If a debug port is already active, do not launch a new browser
@@ -886,24 +925,23 @@ with col_c2:
     if st.button("🖥️ 自动获取 Cookie"):
         with st.spinner("正在从浏览器获取 Cookie..."):
             done = False
-            # Try CDP first (if a debug browser is already running)
-            cdp = fetch_cookies_via_cdp("fanqienovel.com")
-            if cdp:
-                cookie_str_val, ua = cdp
+            fast = quick_cookie_default("fanqienovel.com")
+            if fast:
+                cookie_str_val, ua = fast
                 st.session_state['auto_cookie'] = cookie_str_val
                 st.session_state['auto_ua'] = ua
                 st.session_state['cookie_fetched_len'] = len(cookie_str_val)
                 done = True
             if not done:
                 if not st.session_state.get('cdp_site_opened'):
-                    launched = launch_debug_browser(open_site=True)
+                    _ = launch_debug_browser(open_site=True)
                     st.session_state['cdp_site_opened'] = True
                 else:
-                    launched = launch_debug_browser(open_site=False)
-                # Poll CDP for a short period to collect cookies after login
+                    _ = launch_debug_browser(open_site=False)
+                # Poll CDP for a short period
                 import time as _t
                 start = _t.time()
-                while _t.time() - start < 12:
+                while _t.time() - start < 10:
                     cdp = fetch_cookies_via_cdp("fanqienovel.com")
                     if cdp:
                         cookie_str_val, ua = cdp
