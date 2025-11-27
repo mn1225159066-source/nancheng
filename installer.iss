@@ -25,13 +25,30 @@ Name: "desktopicon"; Description: "在桌面创建快捷方式"; GroupDescriptio
 Filename: "{app}\笔尖传奇下载器.exe"; Description: "运行 笔尖传奇下载器"; Flags: nowait postinstall skipifsilent
 
 [Code]
+function HasSuffixDir(Dir: string): Boolean;
+var d: string;
+begin
+  d := RemoveBackslash(Dir);
+  Result := (ExtractFileName(d) = 'bijianchuanqi');
+end;
+
 procedure CurPageChanged(CurPageID: Integer);
 begin
   if CurPageID = wpSelectDir then
   begin
-    if Copy(WizardDirValue, Length(WizardDirValue) - Length('\bijianchuanqi') + 1, Length('\bijianchuanqi')) <> '\bijianchuanqi' then
+    if not HasSuffixDir(WizardDirValue) then
     begin
       WizardDirValue := AddBackslash(WizardDirValue) + 'bijianchuanqi';
     end;
+  end;
+end;
+
+function NextButtonClick(CurPageID: Integer): Boolean;
+begin
+  Result := True;
+  if CurPageID = wpSelectDir then
+  begin
+    if not HasSuffixDir(WizardDirValue) then
+      WizardDirValue := AddBackslash(WizardDirValue) + 'bijianchuanqi';
   end;
 end;
