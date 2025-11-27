@@ -184,14 +184,14 @@ def open_default_debug_browser():
     try:
         import requests, time as _t
         start = _t.time()
-        while _t.time() - start < 5:
+        while _t.time() - start < 2:
             try:
-                r = requests.get(f"http://127.0.0.1:{debug_port}/json/version", timeout=0.5)
+                r = requests.get(f"http://127.0.0.1:{debug_port}/json/version", timeout=0.4)
                 if r.status_code == 200:
                     break
             except Exception:
                 pass
-            _t.sleep(0.3)
+            _t.sleep(0.2)
     except Exception:
         pass
 

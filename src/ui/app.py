@@ -487,7 +487,7 @@ st.markdown("""
 **使用提示**:
 1. 先在默认浏览器登录番茄小说主页。
 2. 回到本页面点击“自动获取 Cookie”后再下载。
-3. 下载 VIP 章节必须在默认浏览器中登录番茄会员，否则无法下载；推荐使用谷歌浏览器（Chrome）。
+3. 下载 VIP 章节必须在默认浏览器中登录番茄会员，否则无法下载。
 4. 小说主页链接是包含书名、简介、章节目录的那一页链接，请在浏览器地址栏复制该链接并粘贴到输入框。
 5. 本软件仅支持 Chrome 浏览器的自动获取 Cookie；软件启动后会自动打开 Chrome 调试窗口引导登录。
 """
@@ -696,6 +696,13 @@ def quick_cookie_default(domain):
         pass
     return None
 
+def ensure_debug_session():
+    try:
+        if not _find_debug_port():
+            _ = launch_debug_browser(open_site=True)
+    except Exception:
+        pass
+
 def launch_debug_browser(open_site: bool = True):
     try:
         # If a debug port is already active, do not launch a new browser
@@ -778,14 +785,14 @@ def launch_debug_browser(open_site: bool = True):
         try:
             import requests, time as _t
             start = _t.time()
-            while _t.time() - start < 3:
+            while _t.time() - start < 2:
                 try:
-                    r = requests.get(f"http://127.0.0.1:{port}/json/version", timeout=0.5)
+                    r = requests.get(f"http://127.0.0.1:{port}/json/version", timeout=0.4)
                     if r.status_code == 200:
                         break
                 except Exception:
                     pass
-                _t.sleep(0.3)
+                _t.sleep(0.2)
         except Exception:
             pass
         return True
@@ -875,15 +882,11 @@ with col_c2:
                 st.session_state['cookie_fetched_len'] = len(cookie_str_val)
                 done = True
             if not done:
-                if not st.session_state.get('cdp_site_opened'):
-                    _ = launch_debug_browser(open_site=True)
-                    st.session_state['cdp_site_opened'] = True
-                else:
-                    _ = launch_debug_browser(open_site=False)
-                # Poll CDP for a short period
+                ensure_debug_session()
+                # Poll CDP for a short period (快速轮询)
                 import time as _t
                 start = _t.time()
-                while _t.time() - start < 10:
+                while _t.time() - start < 2:
                     cdp = fetch_cookies_via_cdp("fanqienovel.com")
                     if cdp:
                         cookie_str_val, ua = cdp
@@ -892,7 +895,7 @@ with col_c2:
                         st.session_state['cookie_fetched_len'] = len(cookie_str_val)
                         done = True
                         break
-                    _t.sleep(1)
+                    _t.sleep(0.25)
             if not done:
                 # Fallback: read cookies directly from browser profiles for multiple related domains
                 buckets = get_possible_fanqie_cookies()
