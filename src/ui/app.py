@@ -625,27 +625,29 @@ def get_possible_fanqie_cookies():
             buckets.setdefault(name, []).append(jar)
     return buckets
 
-def _find_debug_port():
-    port = os.environ.get('FANQIE_REMOTE_DEBUG_PORT')
-    if port:
-        try:
-            import requests
-            r = requests.get(f"http://127.0.0.1:{port}/json/version", timeout=0.5)
-            if r.status_code == 200:
-                return port
-        except Exception:
-            pass
+def _check_port(port):
     try:
         import requests
-        for p in range(9222, 9236):
-            try:
-                r = requests.get(f"http://127.0.0.1:{p}/json/version", timeout=0.5)
-                if r.status_code == 200:
-                    return str(p)
-            except Exception:
-                continue
+        resp = requests.get(f"http://127.0.0.1:{port}/json/version", timeout=0.2)
+        return resp.status_code == 200
     except Exception:
-        pass
+        return False
+
+def _find_debug_port():
+    # 优先检查环境变量指定的端口
+    port = os.environ.get('FANQIE_REMOTE_DEBUG_PORT')
+    if port and _check_port(port):
+        return port
+    
+    # 检查默认端口 9225
+    if _check_port(9225):
+        return '9225'
+        
+    # 快速扫描常见端口（减少范围以提升速度）
+    for p in range(9222, 9230):
+        if str(p) == '9225': continue
+        if _check_port(p):
+            return str(p)
     return None
 
 def detect_default_browser():
@@ -697,81 +699,72 @@ def quick_cookie_default(domain):
     return None
 
 def ensure_debug_session():
-    try:
-        if not _find_debug_port():
-            _ = launch_debug_browser(open_site=True)
-    except Exception:
-        pass
+    # 如果找不到活跃的调试端口，或者端口无法连接，则启动新浏览器
+    if not _find_debug_port():
+        launch_debug_browser(open_site=True)
 
 def launch_debug_browser(open_site: bool = True):
     try:
-        # If a debug port is already active, do not launch a new browser
+        # 再次检查，防止竞态条件
         if _find_debug_port():
             return True
+            
         local = os.environ.get('LOCALAPPDATA') or ''
+        # 仅检查常见路径，减少文件IO耗时
         chrome_paths = [
+            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+            r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
             os.path.join(local, 'Google', 'Chrome', 'Application', 'chrome.exe'),
-            r"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-            r"C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
         ]
         edge_paths = [
+            r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+            r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
             os.path.join(local, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
-            r"C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
-            r"C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
         ]
-        port = os.environ.get('FANQIE_REMOTE_DEBUG_PORT') or '9225'
+        
+        # 固定使用 9225 端口，避免扫描
+        port = '9225'
         os.environ['FANQIE_REMOTE_DEBUG_PORT'] = port
 
-        # Prefer reusing existing logged-in browser profile to read cookies
-        # Try Chrome default/profile directories, then Edge; fallback to isolated profile
+        # 简化 Profile 查找逻辑：优先使用 Default，避免遍历所有 Profile 目录
         chrome_base = os.path.join(local, 'Google', 'Chrome', 'User Data')
         edge_base = os.path.join(local, 'Microsoft', 'Edge', 'User Data')
-        candidate_profiles = ['Default'] + [f'Profile {i}' for i in range(1, 6)]
-
-        force = (os.environ.get('FANQIE_FORCE_BROWSER') or st.session_state.get('force_browser', '')).lower()
-        preferred = None
-        if force in ('chrome','edge'):
-            preferred = 'Chrome' if force == 'chrome' else 'Edge'
-        else:
-            buckets = get_possible_fanqie_cookies()
-            if buckets.get('Edge'):
-                preferred = 'Edge'
-            elif buckets.get('Chrome'):
-                preferred = 'Chrome'
-
-        def find_profile(base):
-            for prof in candidate_profiles:
-                p = os.path.join(base, prof)
-                if os.path.exists(p):
-                    return p
-            return None
-
-        exe = None
+        
+        preferred = 'Chrome' # 默认 Chrome
+        
+        # 简单的 Profile 选择逻辑
         user_data_dir = None
-        if preferred == 'Edge':
+        exe = None
+        
+        # 尝试查找 Chrome
+        for p in chrome_paths:
+            if os.path.exists(p):
+                exe = p
+                if os.path.exists(os.path.join(chrome_base, 'Default')):
+                    user_data_dir = os.path.join(chrome_base, 'Default')
+                else:
+                    user_data_dir = chrome_base
+                break
+        
+        # 如果没找到 Chrome，尝试 Edge
+        if not exe:
             for p in edge_paths:
                 if os.path.exists(p):
-                    exe = p; break
-            user_data_dir = find_profile(edge_base)
-        elif preferred == 'Chrome':
-            for p in chrome_paths:
-                if os.path.exists(p):
-                    exe = p; break
-            user_data_dir = find_profile(chrome_base)
-        else:
-            for p in chrome_paths:
-                if os.path.exists(p):
-                    exe = p; break
-            if exe is None:
-                for p in edge_paths:
-                    if os.path.exists(p):
-                        exe = p; break
-            user_data_dir = find_profile(chrome_base) or find_profile(edge_base)
+                    exe = p
+                    if os.path.exists(os.path.join(edge_base, 'Default')):
+                        user_data_dir = os.path.join(edge_base, 'Default')
+                    else:
+                        user_data_dir = edge_base
+                    break
+        
+        # 如果都没找到或者是其他情况，使用临时目录
         if user_data_dir is None:
             user_data_dir = os.path.join(os.path.expanduser('~'), '.fanqie_cdp_profile')
             os.makedirs(user_data_dir, exist_ok=True)
+            
         if not exe:
             return False
+            
         args = [
             exe,
             f"--remote-debugging-port={port}",
@@ -780,21 +773,18 @@ def launch_debug_browser(open_site: bool = True):
         ]
         if open_site:
             args.append("https://fanqienovel.com/")
+            
         subprocess.Popen(args, shell=False)
-        # Wait briefly for remote debugging endpoint to become ready
-        try:
-            import requests, time as _t
-            start = _t.time()
-            while _t.time() - start < 2:
-                try:
-                    r = requests.get(f"http://127.0.0.1:{port}/json/version", timeout=0.4)
-                    if r.status_code == 200:
-                        break
-                except Exception:
-                    pass
-                _t.sleep(0.2)
-        except Exception:
-            pass
+        
+        # 增加等待时间，确保浏览器完全启动
+        import requests, time as _t
+        start = _t.time()
+        # 等待最多 5 秒
+        while _t.time() - start < 5.0:
+            if _check_port(port):
+                break
+            _t.sleep(0.1)
+            
         return True
     except Exception:
         return False
@@ -915,56 +905,7 @@ with col_c2:
             if not done:
                 st.error("未能自动获取 Cookie，请确认已在默认浏览器登录后重试")
 
-def auto_cookie_fetch_loop():
-    while True:
-        try:
-            if 'auto_cookie' in st.session_state and st.session_state['auto_cookie']:
-                break
-            cdp = fetch_cookies_via_cdp("fanqienovel.com")
-            if cdp and not st.session_state.get('auto_cookie'):
-                cookie_str_val, ua = cdp
-                st.session_state['auto_cookie'] = cookie_str_val
-                st.session_state['auto_ua'] = ua
-            # Fallback multi-domain lookup
-            buckets = get_possible_fanqie_cookies()
-            found = []
-            for name, jars in buckets.items():
-                if jars:
-                    found.append((name, jars))
-            if found:
-                order = preferred_browser_order()
-                chosen = None
-                for n in order:
-                    for name, jars in found:
-                        if name == n:
-                            chosen = (name, jars)
-                            break
-                    if chosen:
-                        break
-                if not chosen:
-                    chosen = found[0]
-                name, jars = chosen
-                cookie_str_val = format_cookie_str_from_list(jars)
-                if name == "Chrome":
-                    ua = UA_CHROME
-                elif name == "Edge":
-                    ua = UA_EDGE
-                else:
-                    ua = UA_FIREFOX
-                st.session_state['auto_cookie'] = cookie_str_val
-                st.session_state['auto_ua'] = ua
-            time.sleep(3)
-        except Exception:
-            time.sleep(3)
-
-# Start auto cookie fetch background thread once
-cookie_thread_found = False
-for t in threading.enumerate():
-    if t.name == "AutoCookieFetch":
-        cookie_thread_found = True
-        break
-if not cookie_thread_found:
-    threading.Thread(target=auto_cookie_fetch_loop, name="AutoCookieFetch", daemon=True).start()
+# Auto cookie fetch loop removed as per user request
 
 # Use session state cookie
 if 'auto_cookie' in st.session_state:
