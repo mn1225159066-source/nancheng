@@ -487,6 +487,7 @@ st.markdown("""
 1. 先在默认浏览器登录番茄小说主页。
 2. 回到本页面点击“自动获取 Cookie”后再下载。
 3. 下载 VIP 章节必须在默认浏览器中登录番茄会员，否则无法下载；推荐使用谷歌浏览器（Chrome）。
+4. 小说主页链接是包含书名、简介、章节目录的那一页链接，请在浏览器地址栏复制该链接并粘贴到输入框。
 """)
 st.markdown("""
 <style>
@@ -732,6 +733,8 @@ url = st.text_input("小说主页链接", placeholder="https://fanqienovel.com/p
 st.markdown("### 🔑 VIP 登录 (可选)")
 
 has_auto_cookie = bool(st.session_state.get('auto_cookie'))
+if 'cdp_site_opened' not in st.session_state:
+    st.session_state['cdp_site_opened'] = False
 
 col_c1, col_c2 = st.columns([3, 1])
 
@@ -755,8 +758,11 @@ with col_c2:
                 st.session_state['cookie_fetched_len'] = len(cookie_str_val)
                 done = True
             if not done:
-                # Launch a debug browser window ONCE to make CDP work reliably
-                launched = launch_debug_browser(open_site=True)
+                if not st.session_state.get('cdp_site_opened'):
+                    launched = launch_debug_browser(open_site=True)
+                    st.session_state['cdp_site_opened'] = True
+                else:
+                    launched = launch_debug_browser(open_site=False)
                 # Poll CDP for a short period to collect cookies after login
                 import time as _t
                 start = _t.time()
