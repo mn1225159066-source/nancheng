@@ -41,7 +41,7 @@ jobs:
 
       - name: Build with PyInstaller (onedir)
         run: |
-          pyinstaller --onedir --noconsole --name "笔尖传奇下载器" --icon icon.ico --add-data "src/ui;src/ui" --add-data "src/core;src/core" --add-data "icon.jpg;." --collect-metadata streamlit --collect-all streamlit run_gui.py
+          pyinstaller --onedir --noconsole --name "笔尖传奇下载器" --icon icon.ico --add-data "src/ui;src/ui" --add-data "src/core;src/core" --add-data "icon.jpg;." --copy-metadata streamlit --collect-all streamlit run_gui.py
 
       - name: Install Inno Setup
         run: |
