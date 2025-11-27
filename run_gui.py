@@ -177,7 +177,6 @@ def open_default_debug_browser():
     ]
     try:
         subprocess.Popen(args, close_fds=True)
-        os.environ['FANQIE_DEBUG_STARTED'] = '1'
     except Exception:
         return
     # Wait until debug port becomes ready

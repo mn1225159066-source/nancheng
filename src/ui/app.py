@@ -883,19 +883,16 @@ with col_c2:
                 done = True
             if not done:
                 ensure_debug_session()
-                # Poll CDP for a short period (快速轮询)
-                import time as _t
-                start = _t.time()
-                while _t.time() - start < 2:
-                    cdp = fetch_cookies_via_cdp("fanqienovel.com")
-                    if cdp:
-                        cookie_str_val, ua = cdp
-                        st.session_state['auto_cookie'] = cookie_str_val
-                        st.session_state['auto_ua'] = ua
-                        st.session_state['cookie_fetched_len'] = len(cookie_str_val)
-                        done = True
-                        break
-                    _t.sleep(0.25)
+                # 立即尝试一次 CDP 读取，不做轮询
+                cdp = fetch_cookies_via_cdp("fanqienovel.com")
+                if cdp:
+                    cookie_str_val, ua = cdp
+                    st.session_state['auto_cookie'] = cookie_str_val
+                    st.session_state['auto_ua'] = ua
+                    st.session_state['cookie_fetched_len'] = len(cookie_str_val)
+                    done = True
+                else:
+                    st.info("已打开调试窗口，请在其中登录后再次点击“自动获取 Cookie”。")
             if not done:
                 # Fallback: read cookies directly from browser profiles for multiple related domains
                 buckets = get_possible_fanqie_cookies()
