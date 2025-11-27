@@ -10,8 +10,8 @@ UninstallDisplayIcon={app}\笔尖传奇下载器.exe
 Compression=lzma
 SolidCompression=yes
 OutputDir=dist_installer
-PrivilegesRequired=lowest
-PrivilegesRequiredOverridesAllowed=dialog
+PrivilegesRequired=admin
+PrivilegesRequiredOverridesAllowed=none
 UseSetupLdr=yes
 
 [Files]
