@@ -151,6 +151,9 @@ class FanqieScraper:
             return None
 
     def get_chapter_content_cdp(self, chapter_url):
+        # Default disabled: only use when explicitly enabled via env FANQIE_CDP_DOWNLOAD
+        if os.environ.get('FANQIE_CDP_DOWNLOAD') not in ('1', 'true', 'True'):
+            return None
         try:
             port = os.environ.get('FANQIE_REMOTE_DEBUG_PORT')
             if not port:

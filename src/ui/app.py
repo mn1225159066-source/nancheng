@@ -836,66 +836,42 @@ with col_c2:
     if st.button("🖥️ 自动获取 Cookie"):
         with st.spinner("正在从浏览器获取 Cookie..."):
             done = False
-            # Try CDP first (if a debug browser is already running)
-            cdp = fetch_cookies_via_cdp("fanqienovel.com")
-            if cdp:
-                cookie_str_val, ua = cdp
-                st.session_state['auto_cookie'] = cookie_str_val
-                st.session_state['auto_ua'] = ua
-                st.session_state['cookie_fetched_len'] = len(cookie_str_val)
-                done = True
+            buckets = get_possible_fanqie_cookies()
+            if buckets and not done:
+                order = ["Chrome", "Edge", "Firefox"]
+                chosen_name = None
+                for n in order:
+                    if n in buckets:
+                        chosen_name = n; break
+                if not chosen_name and list(buckets.keys()):
+                    chosen_name = list(buckets.keys())[0]
+                jar_list = buckets.get(chosen_name, [])
+                if jar_list:
+                    cookie_str_val = format_cookie_str_from_list(jar_list)
+                    ua = UA_CHROME if chosen_name == "Chrome" else (UA_EDGE if chosen_name == "Edge" else UA_FIREFOX)
+                    st.session_state['auto_cookie'] = cookie_str_val
+                    st.session_state['auto_ua'] = ua
+                    st.session_state['cookie_fetched_len'] = len(cookie_str_val)
+                    done = True
             if not done:
-                if not st.session_state.get('cdp_site_opened'):
-                    launched = launch_debug_browser(open_site=True)
-                    st.session_state['cdp_site_opened'] = True
-                else:
-                    launched = launch_debug_browser(open_site=False)
-                # Poll CDP for a short period to collect cookies after login
-                import time as _t
-                start = _t.time()
-                while _t.time() - start < 12:
-                    cdp = fetch_cookies_via_cdp("fanqienovel.com")
-                    if cdp:
-                        cookie_str_val, ua = cdp
-                        st.session_state['auto_cookie'] = cookie_str_val
-                        st.session_state['auto_ua'] = ua
-                        st.session_state['cookie_fetched_len'] = len(cookie_str_val)
-                        done = True
-                        break
-                    _t.sleep(1)
+                cdp = fetch_cookies_via_cdp("fanqienovel.com")
+                if cdp:
+                    cookie_str_val, ua = cdp
+                    st.session_state['auto_cookie'] = cookie_str_val
+                    st.session_state['auto_ua'] = ua
+                    st.session_state['cookie_fetched_len'] = len(cookie_str_val)
+                    done = True
             if not done:
-                # Fallback: read cookies directly from browser profiles for multiple related domains
-                buckets = get_possible_fanqie_cookies()
-                if buckets:
-                    order = ["Chrome", "Edge", "Firefox"]
-                    chosen_name = None
-                    for n in order:
-                        if n in buckets:
-                            chosen_name = n; break
-                    if not chosen_name:
-                        chosen_name = list(buckets.keys())[0]
-                    jar_list = buckets.get(chosen_name, [])
-                    if jar_list:
-                        cookie_str_val = format_cookie_str_from_list(jar_list)
-                        ua = UA_CHROME if chosen_name == "Chrome" else (UA_EDGE if chosen_name == "Edge" else UA_FIREFOX)
-                        st.session_state['auto_cookie'] = cookie_str_val
-                        st.session_state['auto_ua'] = ua
-                        st.session_state['cookie_fetched_len'] = len(cookie_str_val)
-                        done = True
-            if not done:
-                st.error("未能自动获取 Cookie，请确认已在默认浏览器登录后重试")
+                st.error("未能自动读取 Cookie。若未登录，请使用下方按钮打开登录窗口后再试。")
+    if st.button("🔓 启用辅助获取（打开登录窗口）"):
+        launch_debug_browser(open_site=True)
+        st.session_state['cdp_site_opened'] = True
 
 def auto_cookie_fetch_loop():
     while True:
         try:
             if 'auto_cookie' in st.session_state and st.session_state['auto_cookie']:
                 break
-            cdp = fetch_cookies_via_cdp("fanqienovel.com")
-            if cdp and not st.session_state.get('auto_cookie'):
-                cookie_str_val, ua = cdp
-                st.session_state['auto_cookie'] = cookie_str_val
-                st.session_state['auto_ua'] = ua
-            # Fallback multi-domain lookup
             buckets = get_possible_fanqie_cookies()
             found = []
             for name, jars in buckets.items():
@@ -923,6 +899,12 @@ def auto_cookie_fetch_loop():
                     ua = UA_FIREFOX
                 st.session_state['auto_cookie'] = cookie_str_val
                 st.session_state['auto_ua'] = ua
+            else:
+                cdp = fetch_cookies_via_cdp("fanqienovel.com")
+                if cdp and not st.session_state.get('auto_cookie'):
+                    cookie_str_val, ua = cdp
+                    st.session_state['auto_cookie'] = cookie_str_val
+                    st.session_state['auto_ua'] = ua
             time.sleep(3)
         except Exception:
             time.sleep(3)
@@ -1027,7 +1009,7 @@ if st.session_state.novel_data:
                     # Random delay to avoid detection
                     time.sleep(random.uniform(0.5, 1.5))
                     
-                    content = scraper.get_chapter_content_cdp(chapter['url']) or scraper.get_chapter_content(chapter['url'])
+                    content = scraper.get_chapter_content(chapter['url']) or scraper.get_chapter_content_cdp(chapter['url'])
                     if content:
                         content['title'] = chapter['title']
                         downloaded_content.append(content)
