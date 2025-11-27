@@ -1,0 +1,78 @@
+name: Windows EXE Build
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r 洋柿子小说下载器/requirements.txt
+          pip install pillow
+
+      - name: Convert icon.jpg to icon.ico
+        run: |
+          python - << 'PY'
+          from PIL import Image
+          import os
+          base = r"洋柿子小说下载器"
+          src = os.path.join(base, 'icon.jpg')
+          dst = os.path.join(base, 'icon.ico')
+          img = Image.open(src).convert('RGBA')
+          sizes = [(256,256),(128,128),(64,64),(32,32),(16,16)]
+          img.save(dst, format='ICO', sizes=sizes)
+          PY
+
+      - name: Build EXE with PyInstaller
+        run: |
+          cd 洋柿子小说下载器
+          pyinstaller --noconsole --onefile \
+            --name NanchengTomatoDownloader \
+            --add-data "src;src" \
+            --collect-all streamlit \
+            --collect-all brotli \
+            --collect-all fontTools \
+            --collect-all browser_cookie3 \
+            --collect-all lz4 \
+            --collect-all pycryptodomex \
+            --icon icon.ico \
+            --version-file version_info.txt \
+            run_gui.py
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: NanchengTomatoDownloader-windows
+          path: |
+            洋柿子小说下载器/dist/NanchengTomatoDownloader.exe
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build-windows
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: NanchengTomatoDownloader-windows
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: NanchengTomatoDownloader.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

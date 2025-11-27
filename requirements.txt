@@ -1,0 +1,8 @@
+requests
+streamlit
+beautifulsoup4
+fonttools
+brotli
+pyinstaller
+browser_cookie3
+websocket-client
