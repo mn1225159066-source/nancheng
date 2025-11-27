@@ -11,7 +11,7 @@ Compression=lzma
 SolidCompression=yes
 OutputDir=dist_installer
 PrivilegesRequired=admin
-PrivilegesRequiredOverridesAllowed=none
+; 移除无效的 PrivilegesRequiredOverridesAllowed，采用默认行为（命令行允许）
 UseSetupLdr=yes
 
 [Files]
