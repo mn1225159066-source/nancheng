@@ -698,19 +698,47 @@ def fetch_cookies_via_cdp(domain):
         if not port:
             return None
         pages = requests.get(f"http://127.0.0.1:{port}/json", timeout=2).json()
+        # Prefer a page whose URL matches the target domain
         target_ws = None
-        for p in pages:
-            if 'webSocketDebuggerUrl' in p:
-                target_ws = p['webSocketDebuggerUrl']
+        for pg in pages:
+            u = pg.get('url','')
+            if pg.get('type') == 'page' and domain in u and 'webSocketDebuggerUrl' in pg:
+                target_ws = pg['webSocketDebuggerUrl']
                 break
+        # Fallback: connect to first page and navigate to domain explicitly
+        if not target_ws:
+            for pg in pages:
+                if pg.get('type') == 'page' and 'webSocketDebuggerUrl' in pg:
+                    target_ws = pg['webSocketDebuggerUrl']
+                    break
         if not target_ws:
             return None
         ws = websocket.create_connection(target_ws, timeout=3)
-        ws.send(json.dumps({"id": 1, "method": "Network.enable"}))
-        ws.recv()
-        ws.send(json.dumps({"id": 2, "method": "Network.getCookies"}))
+        ws.send(json.dumps({"id": 1, "method": "Page.enable"}))
+        try:
+            ws.recv()
+        except Exception:
+            pass
+        ws.send(json.dumps({"id": 2, "method": "Network.enable"}))
+        try:
+            ws.recv()
+        except Exception:
+            pass
+        # Ensure a tab is on target domain so that cookies become available
+        ws.send(json.dumps({"id": 3, "method": "Page.navigate", "params": {"url": f"https://{domain}"}}))
+        # Wait for load
+        import time as _t
+        start = _t.time()
+        while _t.time() - start < 5:
+            try:
+                msg = json.loads(ws.recv())
+                if msg.get('method') in ('Page.loadEventFired','Network.loadingFinished'):
+                    break
+            except Exception:
+                break
+        ws.send(json.dumps({"id": 4, "method": "Network.getCookies"}))
         res = json.loads(ws.recv())
-        ws.send(json.dumps({"id": 3, "method": "Runtime.evaluate", "params": {"expression": "navigator.userAgent"}}))
+        ws.send(json.dumps({"id": 5, "method": "Runtime.evaluate", "params": {"expression": "navigator.userAgent"}}))
         ua_res = json.loads(ws.recv())
         ws.close()
         cookies = res.get('result', {}).get('cookies', [])

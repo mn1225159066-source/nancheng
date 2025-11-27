@@ -6,3 +6,5 @@ brotli
 pyinstaller
 browser_cookie3
 websocket-client
+pywin32
+keyring
