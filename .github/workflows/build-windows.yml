@@ -41,11 +41,7 @@ jobs:
 
       - name: Build with PyInstaller (onedir)
         run: |
-          pyinstaller --onedir --noconsole --name "笔尖传奇下载器" --icon icon.ico \
-            --add-data "src/ui;src/ui" --add-data "src/core;src/core" --add-data "icon.jpg;." \
-            --hidden-import browser_cookie3 --hidden-import websocket --hidden-import fontTools --hidden-import bs4 --hidden-import requests --hidden-import brotli \
-            --copy-metadata streamlit --copy-metadata websocket-client --copy-metadata fonttools --copy-metadata beautifulsoup4 --copy-metadata requests --copy-metadata brotli \
-            --collect-all streamlit --collect-all browser_cookie3 --collect-all websocket --collect-all fontTools --collect-all bs4 --collect-all keyring run_gui.py
+          pyinstaller --onedir --noconsole --name "笔尖传奇下载器" --icon icon.ico --add-data "src/ui;src/ui" --add-data "src/core;src/core" --add-data "icon.jpg;." --hidden-import browser_cookie3 --hidden-import websocket --hidden-import fontTools --hidden-import bs4 --hidden-import requests --hidden-import brotli --copy-metadata streamlit --copy-metadata websocket-client --copy-metadata fonttools --copy-metadata beautifulsoup4 --copy-metadata requests --copy-metadata brotli --collect-all streamlit --collect-all browser_cookie3 --collect-all websocket --collect-all fontTools --collect-all bs4 --collect-all keyring run_gui.py
 
       - name: Install Inno Setup
         run: |
