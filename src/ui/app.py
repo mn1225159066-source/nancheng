@@ -614,8 +614,34 @@ def get_possible_fanqie_cookies():
             buckets.setdefault(name, []).append(jar)
     return buckets
 
-def launch_debug_browser():
+def _find_debug_port():
+    port = os.environ.get('FANQIE_REMOTE_DEBUG_PORT')
+    if port:
+        try:
+            import requests
+            r = requests.get(f"http://127.0.0.1:{port}/json/version", timeout=0.5)
+            if r.status_code == 200:
+                return port
+        except Exception:
+            pass
     try:
+        import requests
+        for p in range(9222, 9236):
+            try:
+                r = requests.get(f"http://127.0.0.1:{p}/json/version", timeout=0.5)
+                if r.status_code == 200:
+                    return str(p)
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return None
+
+def launch_debug_browser(open_site: bool = True):
+    try:
+        # If a debug port is already active, do not launch a new browser
+        if _find_debug_port():
+            return True
         local = os.environ.get('LOCALAPPDATA') or ''
         chrome_paths = [
             os.path.join(local, 'Google', 'Chrome', 'Application', 'chrome.exe'),
@@ -645,8 +671,9 @@ def launch_debug_browser():
             exe,
             f"--remote-debugging-port={port}",
             f"--user-data-dir={user_data_dir}",
-            "https://fanqienovel.com/",
         ]
+        if open_site:
+            args.append("https://fanqienovel.com/")
         subprocess.Popen(args, shell=False)
         return True
     except Exception:
@@ -728,8 +755,8 @@ with col_c2:
                 st.session_state['cookie_fetched_len'] = len(cookie_str_val)
                 done = True
             if not done:
-                # Launch a debug browser window to make CDP work reliably
-                launched = launch_debug_browser()
+                # Launch a debug browser window ONCE to make CDP work reliably
+                launched = launch_debug_browser(open_site=True)
                 # Poll CDP for a short period to collect cookies after login
                 import time as _t
                 start = _t.time()

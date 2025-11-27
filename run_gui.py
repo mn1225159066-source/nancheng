@@ -102,14 +102,12 @@ def open_browser(port):
                         exe = p; break
             if exe:
                 try:
-                    site = "https://fanqienovel.com/"
                     subprocess.Popen([
                         exe,
                         f"--remote-debugging-port={debug_port}",
                         f"--remote-allow-origins=http://127.0.0.1:{debug_port}",
                         f"--user-data-dir={user_data_dir}",
-                        url,
-                        site
+                        url
                     ], close_fds=True)
                     return
                 except Exception:
