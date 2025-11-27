@@ -656,8 +656,28 @@ def launch_debug_browser(open_site: bool = True):
         ]
         port = os.environ.get('FANQIE_REMOTE_DEBUG_PORT') or '9225'
         os.environ['FANQIE_REMOTE_DEBUG_PORT'] = port
-        user_data_dir = os.path.join(os.path.expanduser('~'), '.fanqie_cdp_profile')
-        os.makedirs(user_data_dir, exist_ok=True)
+
+        # Prefer reusing existing logged-in browser profile to read cookies
+        # Try Chrome default/profile directories, then Edge; fallback to isolated profile
+        chrome_base = os.path.join(local, 'Google', 'Chrome', 'User Data')
+        edge_base = os.path.join(local, 'Microsoft', 'Edge', 'User Data')
+        candidate_profiles = ['Default'] + [f'Profile {i}' for i in range(1, 6)]
+        user_data_dir = None
+        for prof in candidate_profiles:
+            p = os.path.join(chrome_base, prof)
+            if os.path.exists(p):
+                user_data_dir = p
+                break
+        if user_data_dir is None:
+            for prof in candidate_profiles:
+                p = os.path.join(edge_base, prof)
+                if os.path.exists(p):
+                    user_data_dir = p
+                    break
+        if user_data_dir is None:
+            user_data_dir = os.path.join(os.path.expanduser('~'), '.fanqie_cdp_profile')
+            os.makedirs(user_data_dir, exist_ok=True)
+
         exe = None
         for p in chrome_paths:
             if os.path.exists(p):
@@ -698,47 +718,24 @@ def fetch_cookies_via_cdp(domain):
         if not port:
             return None
         pages = requests.get(f"http://127.0.0.1:{port}/json", timeout=2).json()
-        # Prefer a page whose URL matches the target domain
+        # Only use a tab that is already on the target domain to avoid hijacking the app UI tab
         target_ws = None
         for pg in pages:
             u = pg.get('url','')
             if pg.get('type') == 'page' and domain in u and 'webSocketDebuggerUrl' in pg:
                 target_ws = pg['webSocketDebuggerUrl']
                 break
-        # Fallback: connect to first page and navigate to domain explicitly
-        if not target_ws:
-            for pg in pages:
-                if pg.get('type') == 'page' and 'webSocketDebuggerUrl' in pg:
-                    target_ws = pg['webSocketDebuggerUrl']
-                    break
         if not target_ws:
             return None
         ws = websocket.create_connection(target_ws, timeout=3)
-        ws.send(json.dumps({"id": 1, "method": "Page.enable"}))
+        ws.send(json.dumps({"id": 1, "method": "Network.enable"}))
         try:
             ws.recv()
         except Exception:
             pass
-        ws.send(json.dumps({"id": 2, "method": "Network.enable"}))
-        try:
-            ws.recv()
-        except Exception:
-            pass
-        # Ensure a tab is on target domain so that cookies become available
-        ws.send(json.dumps({"id": 3, "method": "Page.navigate", "params": {"url": f"https://{domain}"}}))
-        # Wait for load
-        import time as _t
-        start = _t.time()
-        while _t.time() - start < 5:
-            try:
-                msg = json.loads(ws.recv())
-                if msg.get('method') in ('Page.loadEventFired','Network.loadingFinished'):
-                    break
-            except Exception:
-                break
-        ws.send(json.dumps({"id": 4, "method": "Network.getCookies"}))
+        ws.send(json.dumps({"id": 2, "method": "Network.getCookies"}))
         res = json.loads(ws.recv())
-        ws.send(json.dumps({"id": 5, "method": "Runtime.evaluate", "params": {"expression": "navigator.userAgent"}}))
+        ws.send(json.dumps({"id": 3, "method": "Runtime.evaluate", "params": {"expression": "navigator.userAgent"}}))
         ua_res = json.loads(ws.recv())
         ws.close()
         cookies = res.get('result', {}).get('cookies', [])

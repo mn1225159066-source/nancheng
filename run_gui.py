@@ -75,45 +75,8 @@ def open_browser(port):
     if not (wait_for_server(port) and wait_for_http_ready(port)):
         return
     url = f"http://127.0.0.1:{port}/?start=1"
-    if sys.platform == 'win32':
-        try:
-            local = os.environ.get('LOCALAPPDATA') or ''
-            chrome_paths = [
-                os.path.join(local, 'Google', 'Chrome', 'Application', 'chrome.exe'),
-                r"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-                r"C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
-            ]
-            edge_paths = [
-                os.path.join(local, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
-                r"C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
-                r"C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
-            ]
-            debug_port = os.environ.get('FANQIE_REMOTE_DEBUG_PORT') or '9225'
-            os.environ['FANQIE_REMOTE_DEBUG_PORT'] = debug_port
-            user_data_dir = os.path.join(os.path.expanduser('~'), '.fanqie_cdp_profile')
-            os.makedirs(user_data_dir, exist_ok=True)
-            exe = None
-            for p in chrome_paths:
-                if os.path.exists(p):
-                    exe = p; break
-            if exe is None:
-                for p in edge_paths:
-                    if os.path.exists(p):
-                        exe = p; break
-            if exe:
-                try:
-                    subprocess.Popen([
-                        exe,
-                        f"--remote-debugging-port={debug_port}",
-                        f"--remote-allow-origins=http://127.0.0.1:{debug_port}",
-                        f"--user-data-dir={user_data_dir}",
-                        url
-                    ], close_fds=True)
-                    return
-                except Exception:
-                    pass
-        except Exception:
-            pass
+    # Always use the default system browser to open app UI.
+    # Do NOT start a remote-debugging browser here to avoid interfering with CDP session used for cookie.
     try:
         if sys.platform == 'darwin':
             subprocess.run(['open', url], check=False)
