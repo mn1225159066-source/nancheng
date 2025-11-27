@@ -685,6 +685,35 @@ def _find_debug_port():
         pass
     return None
 
+def detect_default_browser():
+    try:
+        import sys
+        if sys.platform != 'win32':
+            return None
+        import winreg
+        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\Shell\Associations\UrlAssociations\http\UserChoice")
+        progid, _ = winreg.QueryValueEx(key, "ProgId")
+        s = str(progid).lower()
+        if "chrome" in s:
+            return "Chrome"
+        if "edge" in s:
+            return "Edge"
+        if "firefox" in s:
+            return "Firefox"
+        return None
+    except Exception:
+        return None
+
+def preferred_browser_order():
+    b = detect_default_browser()
+    if b == "Edge":
+        return ["Edge", "Chrome", "Firefox"]
+    if b == "Chrome":
+        return ["Chrome", "Edge", "Firefox"]
+    if b == "Firefox":
+        return ["Firefox", "Chrome", "Edge"]
+    return ["Edge", "Chrome", "Firefox"]
+
 def launch_debug_browser(open_site: bool = True):
     try:
         # If a debug port is already active, do not launch a new browser
@@ -709,30 +738,49 @@ def launch_debug_browser(open_site: bool = True):
         chrome_base = os.path.join(local, 'Google', 'Chrome', 'User Data')
         edge_base = os.path.join(local, 'Microsoft', 'Edge', 'User Data')
         candidate_profiles = ['Default'] + [f'Profile {i}' for i in range(1, 6)]
-        user_data_dir = None
-        for prof in candidate_profiles:
-            p = os.path.join(chrome_base, prof)
-            if os.path.exists(p):
-                user_data_dir = p
-                break
-        if user_data_dir is None:
+
+        force = (os.environ.get('FANQIE_FORCE_BROWSER') or st.session_state.get('force_browser', '')).lower()
+        preferred = None
+        if force in ('chrome','edge'):
+            preferred = 'Chrome' if force == 'chrome' else 'Edge'
+        else:
+            buckets = get_possible_fanqie_cookies()
+            if buckets.get('Edge'):
+                preferred = 'Edge'
+            elif buckets.get('Chrome'):
+                preferred = 'Chrome'
+
+        def find_profile(base):
             for prof in candidate_profiles:
-                p = os.path.join(edge_base, prof)
+                p = os.path.join(base, prof)
                 if os.path.exists(p):
-                    user_data_dir = p
-                    break
-        if user_data_dir is None:
-            user_data_dir = os.path.join(os.path.expanduser('~'), '.fanqie_cdp_profile')
-            os.makedirs(user_data_dir, exist_ok=True)
+                    return p
+            return None
 
         exe = None
-        for p in chrome_paths:
-            if os.path.exists(p):
-                exe = p; break
-        if exe is None:
+        user_data_dir = None
+        if preferred == 'Edge':
             for p in edge_paths:
                 if os.path.exists(p):
                     exe = p; break
+            user_data_dir = find_profile(edge_base)
+        elif preferred == 'Chrome':
+            for p in chrome_paths:
+                if os.path.exists(p):
+                    exe = p; break
+            user_data_dir = find_profile(chrome_base)
+        else:
+            for p in chrome_paths:
+                if os.path.exists(p):
+                    exe = p; break
+            if exe is None:
+                for p in edge_paths:
+                    if os.path.exists(p):
+                        exe = p; break
+            user_data_dir = find_profile(chrome_base) or find_profile(edge_base)
+        if user_data_dir is None:
+            user_data_dir = os.path.join(os.path.expanduser('~'), '.fanqie_cdp_profile')
+            os.makedirs(user_data_dir, exist_ok=True)
         if not exe:
             return False
         args = [
@@ -823,6 +871,7 @@ has_auto_cookie = bool(st.session_state.get('auto_cookie'))
 if 'cdp_site_opened' not in st.session_state:
     st.session_state['cdp_site_opened'] = False
 
+
 col_c1, col_c2 = st.columns([3, 1])
 
 with col_c1:
@@ -867,7 +916,7 @@ with col_c2:
                 # Fallback: read cookies directly from browser profiles for multiple related domains
                 buckets = get_possible_fanqie_cookies()
                 if buckets:
-                    order = ["Chrome", "Edge", "Firefox"]
+                    order = preferred_browser_order()
                     chosen_name = None
                     for n in order:
                         if n in buckets:
@@ -902,7 +951,7 @@ def auto_cookie_fetch_loop():
                 if jars:
                     found.append((name, jars))
             if found:
-                order = ["Chrome", "Edge", "Firefox"]
+                order = preferred_browser_order()
                 chosen = None
                 for n in order:
                     for name, jars in found:
