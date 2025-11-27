@@ -141,7 +141,10 @@ def find_debug_port():
 
 def open_default_debug_browser():
     # If a debug session already exists, reuse it
+    if os.environ.get('FANQIE_DEBUG_STARTED') == '1':
+        return
     if find_debug_port():
+        os.environ['FANQIE_DEBUG_STARTED'] = '1'
         return
     local = os.environ.get('LOCALAPPDATA') or ''
     chrome_paths = [
@@ -149,29 +152,14 @@ def open_default_debug_browser():
         r"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
         r"C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
     ]
-    edge_paths = [
-        os.path.join(local, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
-        r"C:\\Program Files\Microsoft\Edge\Application\msedge.exe",
-        r"C:\\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
-    ]
-    browser = detect_default_browser() or 'edge'
     exe = None
-    if browser == 'chrome':
-        for p in chrome_paths:
-            if os.path.exists(p): exe = p; break
-    else:
-        for p in edge_paths:
-            if os.path.exists(p): exe = p; break
-        if exe is None:
-            for p in chrome_paths:
-                if os.path.exists(p): exe = p; break
+    for p in chrome_paths:
+        if os.path.exists(p):
+            exe = p; break
     if not exe:
         return
     # Choose user profile dir (Default)
-    if 'chrome' in exe.lower():
-        base = os.path.join(local, 'Google', 'Chrome', 'User Data')
-    else:
-        base = os.path.join(local, 'Microsoft', 'Edge', 'User Data')
+    base = os.path.join(local, 'Google', 'Chrome', 'User Data')
     user_data_dir = os.path.join(base, 'Default')
     if not os.path.exists(user_data_dir):
         try:
@@ -189,6 +177,7 @@ def open_default_debug_browser():
     ]
     try:
         subprocess.Popen(args, close_fds=True)
+        os.environ['FANQIE_DEBUG_STARTED'] = '1'
     except Exception:
         return
     # Wait until debug port becomes ready
