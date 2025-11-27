@@ -490,6 +490,8 @@ st.markdown("""
 3. 下载 VIP 章节必须在默认浏览器中登录番茄会员，否则无法下载。
 4. 小说主页链接是包含书名、简介、章节目录的那一页链接，请在浏览器地址栏复制该链接并粘贴到输入框。
 5. 本软件仅支持 Chrome 浏览器的自动获取 Cookie；软件启动后会自动打开 Chrome 调试窗口引导登录。
+6. **请勿关闭弹出的 Chrome 调试窗口**，否则会导致 Cookie 获取失败或 VIP 章节无法下载。
+7. 若无法自动获取 Cookie，可尝试彻底关闭程序并重新运行，软件启动时会自动弹出调试窗口。
 """
 )
 st.warning("免责声明：本软件仅供学习交流使用，不得用于商业盈利，不得侵犯他人知识产权。使用本软件产生的任何后果由使用者自行承担。")
@@ -862,48 +864,74 @@ with col_c2:
     st.write("") # Spacer
     st.write("") 
     if st.button("🖥️ 自动获取 Cookie"):
-        with st.spinner("正在从浏览器获取 Cookie..."):
-            done = False
-            fast = quick_cookie_default("fanqienovel.com")
-            if fast:
-                cookie_str_val, ua = fast
+        # 使用 placeholder 避免全局 spinner 遮挡交互提示
+        status_ph = st.empty()
+        status_ph.info("⏳ 正在尝试从浏览器获取 Cookie...")
+        
+        done = False
+        
+        # 1. 尝试快速获取（无头/本地读取）
+        fast = quick_cookie_default("fanqienovel.com")
+        if fast:
+            cookie_str_val, ua = fast
+            st.session_state['auto_cookie'] = cookie_str_val
+            st.session_state['auto_ua'] = ua
+            st.session_state['cookie_fetched_len'] = len(cookie_str_val)
+            done = True
+        
+        # 2. 如果失败，尝试 CDP（需要启动/连接浏览器）
+        if not done:
+            status_ph.info("🚀 正在启动或连接调试窗口...")
+            # 只有这里稍微耗时，可以考虑是否加 spinner，但为了提示连贯性，使用 text update 更好
+            ensure_debug_session()
+            
+            status_ph.info("🔄 正在通过调试接口读取...")
+            # 立即尝试一次 CDP 读取
+            cdp = fetch_cookies_via_cdp("fanqienovel.com")
+            if cdp:
+                cookie_str_val, ua = cdp
                 st.session_state['auto_cookie'] = cookie_str_val
                 st.session_state['auto_ua'] = ua
                 st.session_state['cookie_fetched_len'] = len(cookie_str_val)
                 done = True
-            if not done:
-                ensure_debug_session()
-                # 立即尝试一次 CDP 读取，不做轮询
-                cdp = fetch_cookies_via_cdp("fanqienovel.com")
-                if cdp:
-                    cookie_str_val, ua = cdp
+            else:
+                # 关键：这里不使用 st.error，而是给出操作指引
+                # 清除“正在获取”的状态，避免用户以为还在加载
+                status_ph.empty() 
+                st.warning(
+                    "⚠️ **已打开调试窗口！**\n\n"
+                    "1. 请在弹出的 Chrome 窗口中登录番茄小说。\n"
+                    "2. **请勿关闭该窗口**（否则无法下载 VIP 章节）。\n"
+                    "3. 登录成功后，请再次点击“自动获取 Cookie”按钮。"
+                )
+        
+        # 3. 最后尝试 Fallback（读取本地文件）
+        if not done:
+            # Fallback: read cookies directly from browser profiles for multiple related domains
+            buckets = get_possible_fanqie_cookies()
+            if buckets:
+                order = preferred_browser_order()
+                chosen_name = None
+                for n in order:
+                    if n in buckets:
+                        chosen_name = n; break
+                if not chosen_name:
+                    chosen_name = list(buckets.keys())[0]
+                jar_list = buckets.get(chosen_name, [])
+                if jar_list:
+                    cookie_str_val = format_cookie_str_from_list(jar_list)
+                    ua = UA_CHROME if chosen_name == "Chrome" else (UA_EDGE if chosen_name == "Edge" else UA_FIREFOX)
                     st.session_state['auto_cookie'] = cookie_str_val
                     st.session_state['auto_ua'] = ua
                     st.session_state['cookie_fetched_len'] = len(cookie_str_val)
                     done = True
-                else:
-                    st.info("已打开调试窗口，请在其中登录后再次点击“自动获取 Cookie”。")
-            if not done:
-                # Fallback: read cookies directly from browser profiles for multiple related domains
-                buckets = get_possible_fanqie_cookies()
-                if buckets:
-                    order = preferred_browser_order()
-                    chosen_name = None
-                    for n in order:
-                        if n in buckets:
-                            chosen_name = n; break
-                    if not chosen_name:
-                        chosen_name = list(buckets.keys())[0]
-                    jar_list = buckets.get(chosen_name, [])
-                    if jar_list:
-                        cookie_str_val = format_cookie_str_from_list(jar_list)
-                        ua = UA_CHROME if chosen_name == "Chrome" else (UA_EDGE if chosen_name == "Edge" else UA_FIREFOX)
-                        st.session_state['auto_cookie'] = cookie_str_val
-                        st.session_state['auto_ua'] = ua
-                        st.session_state['cookie_fetched_len'] = len(cookie_str_val)
-                        done = True
-            if not done:
-                st.error("未能自动获取 Cookie，请确认已在默认浏览器登录后重试")
+        
+        # 最终状态判定
+        if done:
+            status_ph.empty() # 清除进度提示
+        elif not cdp: # 如果已经提示了打开窗口（!cdp），就不显示这个错误，避免重复干扰
+            status_ph.empty()
+            st.error("❌ 未能自动获取 Cookie，请确认已在默认浏览器登录后重试")
 
 # Auto cookie fetch loop removed as per user request
 
