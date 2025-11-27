@@ -100,6 +100,112 @@ def open_url(url):
         except Exception:
             pass
 
+def detect_default_browser():
+    try:
+        import sys
+        if sys.platform != 'win32':
+            return None
+        import winreg
+        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\Shell\Associations\UrlAssociations\http\UserChoice")
+        progid, _ = winreg.QueryValueEx(key, "ProgId")
+        s = str(progid).lower()
+        if "chrome" in s:
+            return "chrome"
+        if "edge" in s:
+            return "edge"
+        return None
+    except Exception:
+        return None
+
+def find_debug_port():
+    try:
+        import requests
+        port = os.environ.get('FANQIE_REMOTE_DEBUG_PORT')
+        if port:
+            try:
+                r = requests.get(f"http://127.0.0.1:{port}/json/version", timeout=0.5)
+                if r.status_code == 200:
+                    return port
+            except Exception:
+                pass
+        for p in range(9222, 9236):
+            try:
+                r = requests.get(f"http://127.0.0.1:{p}/json/version", timeout=0.5)
+                if r.status_code == 200:
+                    return str(p)
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return None
+
+def open_default_debug_browser():
+    # If a debug session already exists, reuse it
+    if find_debug_port():
+        return
+    local = os.environ.get('LOCALAPPDATA') or ''
+    chrome_paths = [
+        os.path.join(local, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+        r"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+        r"C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+    ]
+    edge_paths = [
+        os.path.join(local, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+        r"C:\\Program Files\Microsoft\Edge\Application\msedge.exe",
+        r"C:\\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+    ]
+    browser = detect_default_browser() or 'edge'
+    exe = None
+    if browser == 'chrome':
+        for p in chrome_paths:
+            if os.path.exists(p): exe = p; break
+    else:
+        for p in edge_paths:
+            if os.path.exists(p): exe = p; break
+        if exe is None:
+            for p in chrome_paths:
+                if os.path.exists(p): exe = p; break
+    if not exe:
+        return
+    # Choose user profile dir (Default)
+    if 'chrome' in exe.lower():
+        base = os.path.join(local, 'Google', 'Chrome', 'User Data')
+    else:
+        base = os.path.join(local, 'Microsoft', 'Edge', 'User Data')
+    user_data_dir = os.path.join(base, 'Default')
+    if not os.path.exists(user_data_dir):
+        try:
+            os.makedirs(user_data_dir, exist_ok=True)
+        except Exception:
+            pass
+    debug_port = os.environ.get('FANQIE_REMOTE_DEBUG_PORT') or '9225'
+    os.environ['FANQIE_REMOTE_DEBUG_PORT'] = debug_port
+    args = [
+        exe,
+        f"--remote-debugging-port={debug_port}",
+        f"--remote-allow-origins=http://127.0.0.1:{debug_port}",
+        f"--user-data-dir={user_data_dir}",
+        "https://fanqienovel.com/"
+    ]
+    try:
+        subprocess.Popen(args, close_fds=True)
+    except Exception:
+        return
+    # Wait until debug port becomes ready
+    try:
+        import requests, time as _t
+        start = _t.time()
+        while _t.time() - start < 5:
+            try:
+                r = requests.get(f"http://127.0.0.1:{debug_port}/json/version", timeout=0.5)
+                if r.status_code == 200:
+                    break
+            except Exception:
+                pass
+            _t.sleep(0.3)
+    except Exception:
+        pass
+
 import traceback
 
 if __name__ == "__main__":
@@ -235,7 +341,13 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Failed to write lock file: {e}")
     # --- LOCK FILE LOGIC END ---
-    
+
+    # Start a default browser debug session early so that '自动获取 Cookie' is instant
+    try:
+        threading.Thread(target=open_default_debug_browser, name="InitDebugBrowser", daemon=True).start()
+    except Exception:
+        pass
+
     # 2. Start browser opener in a separate thread
     # Daemon=True ensures it dies when main thread dies
     t = threading.Thread(target=open_browser, args=(port,), daemon=True)
