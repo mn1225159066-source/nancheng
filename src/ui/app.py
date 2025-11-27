@@ -25,7 +25,8 @@ def auto_shutdown_loop():
             session_infos = current_server._session_info_by_id
             active_count = len(session_infos)
         except Exception:
-            active_count = 1
+            # 在无法读取会话信息时，按“无活动会话”处理，避免后台常驻
+            active_count = 0
         if active_count > 0:
             had_session = True
             idle_start = None
@@ -519,6 +520,20 @@ st.markdown("""
 """, unsafe_allow_html=True)
 st.link_button("一键打开番茄小说主页进行登录", "https://fanqienovel.com/")
 
+# 彻底关闭程序（用于后台进程常驻时）
+def request_shutdown():
+    import requests
+    p = os.environ.get('FANQIE_SHUTDOWN_PORT')
+    if p:
+        try:
+            requests.get(f"http://127.0.0.1:{p}/shutdown", timeout=1)
+        except Exception:
+            pass
+
+if st.button("彻底关闭程序（后台进程占用时使用）"):
+    request_shutdown()
+    st.success("已发送退出指令，请稍候重新打开软件。")
+
 def get_browser_cookies(domain_name):
     log_debug(f"Attempting to load cookies for domain: {domain_name}")
     cookies = []
@@ -543,35 +558,67 @@ def get_browser_cookies(domain_name):
 
     try:
         local = os.environ.get('LOCALAPPDATA') or ''
-        chrome_base = os.path.join(local, 'Google', 'Chrome', 'User Data')
-        edge_base = os.path.join(local, 'Microsoft', 'Edge', 'User Data')
+        roaming = os.environ.get('APPDATA') or ''
         profiles = ['Default'] + [f'Profile {i}' for i in range(1, 21)]
-        for prof in profiles:
-            paths = [
-                os.path.join(chrome_base, prof, 'Network', 'Cookies'),
-                os.path.join(chrome_base, prof, 'Cookies'),
+
+        def scan_chrome_like(name, base_dir, use_edge=False):
+            if not base_dir:
+                return
+            key_file = os.path.join(base_dir, 'Local State')
+            for prof in profiles:
+                paths = [
+                    os.path.join(base_dir, prof, 'Network', 'Cookies'),
+                    os.path.join(base_dir, prof, 'Cookies'),
+                ]
+                for p in paths:
+                    if os.path.exists(p):
+                        try:
+                            if use_edge:
+                                cj = browser_cookie3.edge(domain_name=domain_name, cookie_file=p)
+                            else:
+                                # 尝试显式传入 key_file，提高兼容能力
+                                try:
+                                    cj = browser_cookie3.chrome(domain_name=domain_name, cookie_file=p, key_file=key_file)
+                                except TypeError:
+                                    cj = browser_cookie3.chrome(domain_name=domain_name, cookie_file=p)
+                            if len(cj) > 0:
+                                cookies.append((name, cj))
+                        except Exception as e:
+                            log_debug(f"{name} profile {prof} error: {e}")
+
+        # 官方 Chrome/Edge
+        scan_chrome_like('Chrome', os.path.join(local, 'Google', 'Chrome', 'User Data'))
+        scan_chrome_like('Edge', os.path.join(local, 'Microsoft', 'Edge', 'User Data'), use_edge=True)
+
+        # 常见国产/第三方 Chromium 浏览器
+        scan_chrome_like('Brave', os.path.join(local, 'BraveSoftware', 'Brave-Browser', 'User Data'))
+        scan_chrome_like('Vivaldi', os.path.join(local, 'Vivaldi', 'User Data'))
+        # Opera 存在于 Roaming
+        opera_base = os.path.join(roaming, 'Opera Software', 'Opera Stable')
+        if os.path.exists(opera_base):
+            # Opera 的结构稍有不同，直接检查 Cookies 文件
+            operapaths = [
+                os.path.join(opera_base, 'Network', 'Cookies'),
+                os.path.join(opera_base, 'Cookies'),
             ]
-            for p in paths:
+            for p in operapaths:
                 if os.path.exists(p):
                     try:
                         cj = browser_cookie3.chrome(domain_name=domain_name, cookie_file=p)
                         if len(cj) > 0:
-                            cookies.append(("Chrome", cj))
+                            cookies.append(('Opera', cj))
                     except Exception as e:
-                        log_debug(f"Chrome profile {prof} error: {e}")
-        for prof in profiles:
-            paths = [
-                os.path.join(edge_base, prof, 'Network', 'Cookies'),
-                os.path.join(edge_base, prof, 'Cookies'),
-            ]
-            for p in paths:
-                if os.path.exists(p):
-                    try:
-                        cj = browser_cookie3.edge(domain_name=domain_name, cookie_file=p)
-                        if len(cj) > 0:
-                            cookies.append(("Edge", cj))
-                    except Exception as e:
-                        log_debug(f"Edge profile {prof} error: {e}")
+                        log_debug(f"Opera error: {e}")
+
+        # 国产常见：360、QQ、搜狗、2345（路径可能因版本变化）
+        scan_chrome_like('360Chrome', os.path.join(local, '360Chrome', 'User Data'))
+        scan_chrome_like('QQBrowser', os.path.join(local, 'Tencent', 'QQBrowser', 'User Data'))
+        scan_chrome_like('SogouExplorer', os.path.join(local, 'SogouExplorer', 'User Data'))
+        scan_chrome_like('2345Explorer', os.path.join(local, '2345Explorer', 'User Data'))
+
+        # 开源 Chromium
+        scan_chrome_like('Chromium', os.path.join(local, 'Chromium', 'User Data'))
+
     except Exception as e:
         log_debug(f"Profile scanning error: {e}")
 
@@ -691,11 +738,26 @@ def launch_debug_browser(open_site: bool = True):
         args = [
             exe,
             f"--remote-debugging-port={port}",
+            f"--remote-allow-origins=http://127.0.0.1:{port}",
             f"--user-data-dir={user_data_dir}",
         ]
         if open_site:
             args.append("https://fanqienovel.com/")
         subprocess.Popen(args, shell=False)
+        # Wait briefly for remote debugging endpoint to become ready
+        try:
+            import requests, time as _t
+            start = _t.time()
+            while _t.time() - start < 3:
+                try:
+                    r = requests.get(f"http://127.0.0.1:{port}/json/version", timeout=0.5)
+                    if r.status_code == 200:
+                        break
+                except Exception:
+                    pass
+                _t.sleep(0.3)
+        except Exception:
+            pass
         return True
     except Exception:
         return False

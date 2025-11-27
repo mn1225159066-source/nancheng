@@ -10,6 +10,9 @@ UninstallDisplayIcon={app}\笔尖传奇下载器.exe
 Compression=lzma
 SolidCompression=yes
 OutputDir=dist_installer
+PrivilegesRequired=lowest
+PrivilegesRequiredOverridesAllowed=dialog
+UseSetupLdr=no
 
 [Files]
 Source: "dist\笔尖传奇下载器\*"; DestDir: "{app}"; Flags: recursesubdirs
