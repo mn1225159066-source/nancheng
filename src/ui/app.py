@@ -489,6 +489,7 @@ st.markdown("""
 2. 回到本页面点击“自动获取 Cookie”后再下载。
 3. 下载 VIP 章节必须在默认浏览器中登录番茄会员，否则无法下载；推荐使用谷歌浏览器（Chrome）。
 4. 小说主页链接是包含书名、简介、章节目录的那一页链接，请在浏览器地址栏复制该链接并粘贴到输入框。
+5. 本软件仅支持 Chrome 与 Edge 浏览器的自动获取 Cookie；默认以系统浏览器为主，若无法打开调试或读取 Cookie 将自动尝试 Chrome。
 """)
 st.warning("免责声明：本软件仅供学习交流使用，不得用于商业盈利，不得侵犯他人知识产权。使用本软件产生的任何后果由使用者自行承担。")
 st.markdown("""
@@ -550,12 +551,7 @@ def get_browser_cookies(domain_name):
             cookies.append(("Edge", cj))
     except Exception as e:
         log_debug(f"Edge default error: {e}")
-    try:
-        cj = browser_cookie3.firefox(domain_name=domain_name)
-        if len(cj) > 0:
-            cookies.append(("Firefox", cj))
-    except Exception as e:
-        log_debug(f"Firefox default error: {e}")
+    # 仅适配 Chrome 与 Edge
 
     try:
         local = os.environ.get('LOCALAPPDATA') or ''
@@ -591,34 +587,7 @@ def get_browser_cookies(domain_name):
         scan_chrome_like('Chrome', os.path.join(local, 'Google', 'Chrome', 'User Data'))
         scan_chrome_like('Edge', os.path.join(local, 'Microsoft', 'Edge', 'User Data'), use_edge=True)
 
-        # 常见国产/第三方 Chromium 浏览器
-        scan_chrome_like('Brave', os.path.join(local, 'BraveSoftware', 'Brave-Browser', 'User Data'))
-        scan_chrome_like('Vivaldi', os.path.join(local, 'Vivaldi', 'User Data'))
-        # Opera 存在于 Roaming
-        opera_base = os.path.join(roaming, 'Opera Software', 'Opera Stable')
-        if os.path.exists(opera_base):
-            # Opera 的结构稍有不同，直接检查 Cookies 文件
-            operapaths = [
-                os.path.join(opera_base, 'Network', 'Cookies'),
-                os.path.join(opera_base, 'Cookies'),
-            ]
-            for p in operapaths:
-                if os.path.exists(p):
-                    try:
-                        cj = browser_cookie3.chrome(domain_name=domain_name, cookie_file=p)
-                        if len(cj) > 0:
-                            cookies.append(('Opera', cj))
-                    except Exception as e:
-                        log_debug(f"Opera error: {e}")
-
-        # 国产常见：360、QQ、搜狗、2345（路径可能因版本变化）
-        scan_chrome_like('360Chrome', os.path.join(local, '360Chrome', 'User Data'))
-        scan_chrome_like('QQBrowser', os.path.join(local, 'Tencent', 'QQBrowser', 'User Data'))
-        scan_chrome_like('SogouExplorer', os.path.join(local, 'SogouExplorer', 'User Data'))
-        scan_chrome_like('2345Explorer', os.path.join(local, '2345Explorer', 'User Data'))
-
-        # 开源 Chromium
-        scan_chrome_like('Chromium', os.path.join(local, 'Chromium', 'User Data'))
+        # 仅扫描 Chrome 与 Edge 用户目录
 
     except Exception as e:
         log_debug(f"Profile scanning error: {e}")
@@ -708,12 +677,10 @@ def detect_default_browser():
 def preferred_browser_order():
     b = detect_default_browser()
     if b == "Edge":
-        return ["Edge", "Chrome", "Firefox"]
+        return ["Edge", "Chrome"]
     if b == "Chrome":
-        return ["Chrome", "Edge", "Firefox"]
-    if b == "Firefox":
-        return ["Firefox", "Chrome", "Edge"]
-    return ["Edge", "Chrome", "Firefox"]
+        return ["Chrome", "Edge"]
+    return ["Edge", "Chrome"]
 
 def quick_cookie_default(domain):
     try:
@@ -743,13 +710,6 @@ def quick_cookie_default(domain):
                         return format_cookie_str(jar), UA_EDGE
                 except Exception:
                     pass
-        if b == "Firefox":
-            try:
-                jar = browser_cookie3.firefox(domain_name=domain)
-                if len(jar) > 0:
-                    return format_cookie_str(jar), UA_FIREFOX
-            except Exception:
-                pass
     except Exception:
         pass
     return None
