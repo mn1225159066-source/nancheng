@@ -12,7 +12,7 @@ SolidCompression=yes
 OutputDir=dist_installer
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
-UseSetupLdr=no
+UseSetupLdr=yes
 
 [Files]
 Source: "dist\笔尖传奇下载器\*"; DestDir: "{app}"; Flags: recursesubdirs
